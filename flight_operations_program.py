@@ -17,6 +17,8 @@ Note:
   - For pi zero, a line must be added to /etc/rc.local to run the python script on 
   startup. For example: python /home/pi/nff-sample.py &. The ending & runs the program
   in the background.
+
+last modified by gowens March 13, 2021
 """
 
 
@@ -124,6 +126,7 @@ QUESTION: DO THESE LOOPS NEED ESTIMATION?
 
 def getTempAndRPM():
 	# read and output temperature and angular velocity sensor (combined for now, unnecessary though)
+	# assumes there will be a readable temperature sensor 
 	data = open(device_file, 'r')
     lines = data.readlines()
     data.close()
@@ -135,6 +138,7 @@ def heatUpAndMelt():
 	while getTempAndSpeed(0) < meltingPoint:
 		GPIO.output(heaterPin, GPIO.HIGH) #unclear if this will be PWM, but my guess is yes
 		print("heating up")
+		return False
 	else 
 		heaterPin = Low
 		print("at temp")
@@ -148,8 +152,10 @@ def coolDownAndSpinUp():
 	while getTempAndSpeed(1) <= idealRPM:
 		GPIO.output(motorPin, GPIO.HIGH) #this is a motor so will be PWM
     	print("spinning up")
+	return True
 
-	
+def shutDown()
+	GPIO.output(motorPin, GPIO.LOW) # this is crude at the moment, might look like stepping down slowly? 
 
 """ main
 
@@ -165,11 +171,15 @@ def main():
     # Flag to keep track of the spinning
     isWaxSpinning = False
 
+    # Flag to keep track of experiment
+    experimentRun = False
+
     # Wait about 5 seconds before starting (probably unnecessary)
     time.sleep(5)
 
     # Initialize the experiment by starting to heat the wax up
-    heatUpAndMelt()
+
+    
 
     # Open serial connection. Add more robust error handling to this section if
     # desired.
@@ -177,10 +187,11 @@ def main():
 
 
     # Main loop to continuously read in incoming data and attempt to parse it.
-    while heatUpAndMelt: #i.e. if wax has melted
+    while not experimentRun: #i.e. run continuously while experiment hasn't been completed 
         # Check for any available data in the input serial buffer according to the polling rate.
-        while ser.in_waiting == 0:
-            time.sleep(0.01)
+        
+        # while ser.in_waiting == 0:
+        #   time.sleep(0.01)
 
         # Read in up to the maximum size of data per line.
         data_in = ser.read(MAXBUFFER)
@@ -193,10 +204,16 @@ def main():
         if not parse_serial_packet(data_in):
             continue
 
-        if not isWaxSpining:
-            if (FLIGHT_DATA['flight_event'] == "G"): # assuming apogee is when we start running the experiment
-                coolDownAndSpinUp()
+        if (FLIGHT_DATA['flight_event'] == "F"): # this corresponds with the flight event "seperation"
+        	while not isWaxMelted: 
+        		isWaxMelted = heatUpAndMelt() # this should run the heat up function and break the loop when the heater has done its thing
+
+
+		if (FLIGHT_DATA['flight_event'] == "G"): # G is assuming apogee is when we start running the experiment
+        	if not isWaxSpinning:
+                isWaxSpinning = coolDownAndSpinUp()
  				time.wait() #wait a certain amount of time for casting
+
 
 
 if __name__=="__main__":
